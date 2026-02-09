@@ -17,6 +17,61 @@ class WindowCapturer:
     def find_window(self) -> bool:
         """Finds the window and updates its position."""
         try:
+            import sys
+            if sys.platform == 'darwin':
+                return self._find_window_macos()
+            else:
+                return self._find_window_generic()
+            return True
+        except Exception as e:
+            logger.error(f"Error finding window: {e}")
+            return False
+
+    def _find_window_macos(self) -> bool:
+        try:
+            import Quartz
+            # Get all windows
+            windows = Quartz.CGWindowListCopyWindowInfo(
+                Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+                Quartz.kCGNullWindowID
+            )
+            
+            for win in windows:
+                # Check title (kCGWindowName) and OwnerName
+                win_name = win.get('kCGWindowName', '')
+                owner_name = win.get('kCGWindowOwnerName', '')
+                
+                # Cleanup names for comparison (handle None)
+                win_name = str(win_name) if win_name else ""
+                owner_name = str(owner_name) if owner_name else ""
+
+                if self.window_title in win_name or self.window_title in owner_name:
+                    # ... match found code ...
+                    bounds = win.get('kCGWindowBounds')
+                    # ... 
+                    # (Existing logic)
+                    if bounds:
+                        self.window_rect = {
+                            "top": int(bounds['Y']),
+                            "left": int(bounds['X']),
+                            "width": int(bounds['Width']),
+                            "height": int(bounds['Height'])
+                        }
+                        logger.info(f"Window found (macOS): {win_name} | Rect: {self.window_rect}")
+                        return True
+                
+                # Debug logging for inspection
+                # logger.debug(f"Checked: Name='{win_name}', Owner='{owner_name}'")
+            
+            logger.warning(f"Window '{self.window_title}' not found in Quartz window list.")
+            return False
+            
+        except ImportError:
+            logger.error("pyscreeze/pyobjc not installed correctly for macOS window capture.")
+            return False
+
+    def _find_window_generic(self) -> bool:
+        try:
             windows = gw.getWindowsWithTitle(self.window_title)
             if not windows:
                 logger.warning(f"Window '{self.window_title}' not found.")
@@ -24,27 +79,24 @@ class WindowCapturer:
             
             # Use the first matching window
             window = windows[0]
-            if window.isActive: 
-                pass # Already active
-            else:
+            if not window.isActive:
                 try:
                     window.activate()
                 except Exception as e:
                     logger.warning(f"Could not activate window: {e}")
 
-            # Define capture region
-            # Adjust these offsets if necessary (e.g., to exclude title bar)
             self.window_rect = {
                 "top": window.top,
                 "left": window.left,
                 "width": window.width,
                 "height": window.height
             }
-            logger.info(f"Window found at: {self.window_rect}")
+            logger.info(f"Window found: {self.window_rect}")
             return True
-        except Exception as e:
-            logger.error(f"Error finding window: {e}")
-            return False
+        except AttributeError:
+             # Fallback for platforms where pygetwindow might be partial
+             logger.error("pygetwindow interface mismatch.")
+             return False
 
     def capture(self) -> Optional[np.ndarray]:
         """Captures the window content and returns it as a BGR numpy array (OpenCV format)."""
