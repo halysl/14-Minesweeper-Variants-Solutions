@@ -1,1 +1,0 @@
-// Basic logic solver implementation
